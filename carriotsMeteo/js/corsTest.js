@@ -4,10 +4,7 @@ function createCORSRequest(method, url) {
   if ("withCredentials" in xhr) {
     // XHR for Chrome/Firefox/Opera/Safari.
     xhr.open(method, url, true);
-  } else if (typeof XDomainRequest != "undefined") {
-    // XDomainRequest for IE.
-    xhr = new XDomainRequest();
-    xhr.open(method, url);
+
   } else {
     // CORS not supported.
     xhr = null;
@@ -23,93 +20,87 @@ function makeCorsRequest(meth, url) {
   var device = 'madrid@carriotsMeteo.carriotsMeteo';
 
   if (!xhr) {
-    alert('CORS not supported');
+    showWeatherError('CORS not supported');
     return;
   }
   
-  xhr.setRequestHeader('Host', 'api.carriots.com');
   xhr.setRequestHeader('carriots.apiKey', apikey);
   xhr.setRequestHeader('Accept', 'application/json');
-  xhr.setRequestHeader('User-Agent', 'Carriots-client');
-  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.timeout = 15000;
   
   // Response handlers.
   xhr.onload = function() {
-    var text = xhr.responseText;
-    decodeJson(text);
+    if (xhr.status < 200 || xhr.status >= 300) {
+      showWeatherError('Weather request failed (HTTP ' + xhr.status + ').');
+      return;
+    }
+    try {
+      decodeJson(xhr.responseText);
+      $('#weather-error').text('').hide();
+    } catch (error) {
+      showWeatherError('Weather service returned invalid or incomplete data.');
+    }
 	//console.log(text);
   };
 
   xhr.onerror = function() {
-    alert('There was an error making the request.');
+    showWeatherError('Unable to connect to the weather service.');
   };
 
+  xhr.ontimeout = function () { showWeatherError('Weather request timed out.'); };
   xhr.send(jsonData);
 }
 
-// Decode the JSON 
-function decodeJson(text){
-  obj = JSON.parse(text);
-    
-  //Actual report
-  var now=new Date(obj.result[0].at*1000);
-  now=now.getFullYear()+'-'+(now.getMonth()+1)+'-'+now.getDate()+' '+now.getHours()+':'+now.getMinutes()+':'+now.getSeconds();
-  var nowTemp=obj.result[0].data.temp;
-  var nowWind=obj.result[0].data.wind_speed;
-  var nowHumidity=obj.result[0].data.hum;
-  var nowWindDir=obj.result[0].data.wind_dir;
-  $( "#last_update" ).html("Last Update: "+now);
-  var evoTemp=nowTemp-(obj.result[1].data.temp);
-  if(evoTemp<0) { 
-  	var textTemp='<span class="badge badge-orange"><i class="fa fa-arrow-down"></i> '+Math.abs(evoTemp)+'</span>';
-  } else {
-  	var textTemp='<span class="badge badge-green"><i class="fa fa-arrow-up"></i> '+Math.abs(evoTemp)+'</span>';
+function showWeatherError(message) {
+  $('#weather-error').text(message).show();
+  $('#last_update').text('Weather data unavailable');
+  ['#nowTemp', '#nowWind', '#nowHumidity'].forEach(function (id) {
+    $(id).text('—').css('background', 'none');
+  });
+  for (var i = 1; i <= 4; i++) $('#chart_grow' + i).empty();
+  $('#knob-dyn').val(0).trigger('change');
+}
+
+function weatherNumber(value) {
+  if ((typeof value !== 'number' && typeof value !== 'string') ||
+      (typeof value === 'string' && value.trim() === '')) {
+    throw new Error('Missing numeric weather value');
   }
-  var evoWind=nowWind-(obj.result[1].data.wind_speed);
-  if(evoWind<0) { 
-  	var textWind='<span class="badge badge-orange"><i class="fa fa-arrow-down"></i> '+Math.abs(evoWind)+'</span>';
-  } else {
-  	var textWind='<span class="badge badge-green"><i class="fa fa-arrow-up"></i> '+Math.abs(evoWind)+'</span>';
+  var number = Number(value);
+  if (!isFinite(number)) throw new Error('Invalid numeric weather value');
+  return number;
+}
+
+function decodeJson(text) {
+  var obj = JSON.parse(text);
+  if (!obj || !Array.isArray(obj.result) || !obj.result.length) {
+    throw new Error('No weather records');
   }
-  var evoHumidity=nowHumidity-(obj.result[1].data.hum);
-  if(evoHumidity<0) { 
-  	var textHumidity='<span class="badge badge-orange"><i class="fa fa-arrow-down"></i> '+Math.abs(evoHumidity)+'</span>';
-  } else {
-  	var textHumidity='<span class="badge badge-green"><i class="fa fa-arrow-up"></i> '+Math.abs(evoHumidity)+'</span>';
+  // Validate the complete response before updating the display.
+  var records = obj.result.map(function (record) {
+    if (!record || !record.data) throw new Error('Missing weather record');
+    var at = weatherNumber(record.at) * 1000;
+    if (!isFinite(new Date(at).getTime())) throw new Error('Invalid timestamp');
+    return {at: at, temp: weatherNumber(record.data.temp),
+      wind: weatherNumber(record.data.wind_speed), hum: weatherNumber(record.data.hum),
+      dir: weatherNumber(record.data.wind_dir), uv: weatherNumber(record.data.uv_rad)};
+  }).sort(function (a, b) { return b.at - a.at; });
+  var current = records[0], previous = records[1];
+  $('#last_update').text('Last Update: ' + new Date(current.at).toLocaleString());
+  function display(id, field, unit) {
+    var change = previous ? current[field] - previous[field] : null;
+    var trend = change === null ? '' : ' (' + (change > 0 ? '+' : '') +
+      Math.round(change * 100) / 100 + ')';
+    $(id).text(current[field] + ' ' + unit + trend).css('background', 'none');
   }
-  
-  $( "#nowTemp" ).html('<strong>'+nowTemp+'</strong> &ordm;C '+textTemp); $( "#nowTemp" ).css("background", "none");
-  $( "#nowWind" ).html('<strong>'+nowWind+'</strong> Km/H '+textWind);  $( "#nowWind" ).css("background", "none");
-  $( "#nowHumidity" ).html('<strong>'+nowHumidity+'</strong> % '+textHumidity);  $( "#nowHumidity" ).css("background", "none");
-  $( '#knob-dyn').val(nowWindDir); $( "#nowWindDir" ).css("background", "none");
-  $( '#knob-dyn').knob();
-  
-  
-  //24H Reports
-  var at=0;
-  var wind=0;
-  var temp=0;
-  var hum=0;
-  var press=0;
-  var data=[];
-  var data2=[];
-  var data3=[];
-  var data4=[];
-  for(var i=0; i<26; i++){
-    at=new Date(obj.result[i].at*1000);
-	wind=obj.result[i].data.wind_speed;
-	temp=obj.result[i].data.temp;
-	//correccion valores negativos
-	if(temp<0) temp=Math.abs(temp);
-	hum=obj.result[i].data.hum;
-	uvrad=obj.result[i].data.uv_rad;
-	data.push([at,wind]);
-	data2.push([at,temp]);
-	data3.push([at,hum]);
-	data4.push([at,uvrad]);
-  }
-  Charts.initOtherCharts("Km/H",1,data);
-  Charts.initOtherCharts("&ordm;C",2,data2);
-  Charts.initOtherCharts("%",3,data3);
-  Charts.initOtherCharts("Nm",4,data4);
+  display('#nowTemp', 'temp', '°C');
+  display('#nowWind', 'wind', 'Km/H');
+  display('#nowHumidity', 'hum', '%');
+  $('#knob-dyn').val(current.dir).knob().trigger('change');
+  var cutoff = current.at - 24 * 60 * 60 * 1000;
+  var history = records.filter(function (record) { return record.at >= cutoff; }).reverse();
+  [['wind', 'Km/H'], ['temp', '°C'], ['hum', '%'], ['uv', 'UV']].forEach(function (series, index) {
+    var points = history.map(function (record) { return [record.at, record[series[0]]]; });
+    Charts.initOtherCharts(series[1], index + 1, points);
+  });
 }

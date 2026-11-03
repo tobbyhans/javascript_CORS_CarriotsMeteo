@@ -21,3 +21,23 @@ How to query Carriots API to request data is detailed in our documentation page 
 In this example we are using a template from Theme Forest. http://themeforest.net/
 
 If you want to use it, please visit the website and purchase this template.
+
+
+## Preview and regression tests
+
+Serve the frontend with `python3 -m http.server 8000 --directory carriotsMeteo`.
+Run the dependency-free tests with Node.js 18 or newer:
+
+```sh
+node --test tests/weather.test.cjs
+```
+
+The weather service must support HTTPS and allow the page origin and
+`carriots.apiKey` header through CORS. There is no insecure HTTP fallback.
+Google Maps depends on the provider's access/key configuration; map failure
+no longer prevents the weather request. External services have not been verified live.
+Only the public read-only demo key belongs in this browser client; private or
+write-capable credentials require a server-side integration.
+Charts cover the last 24 hours relative to the latest received reading and
+preserve negative temperatures. Short feeds are supported; invalid or empty
+feeds display an error and clear stale readings. The ThemeForest notice still applies.
