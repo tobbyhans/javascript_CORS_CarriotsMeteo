@@ -48,7 +48,7 @@ var Charts = function () {
 
 
                 function showTooltip(x, y, contents) {
-                    $('<div id="tooltip">' + contents + '</div>').css({
+                    $('<div id="tooltip"></div>').text(contents).css({
                             position: 'absolute',
                             display: 'none',
                             top: y + 5,
@@ -63,7 +63,7 @@ var Charts = function () {
                 }
 
                 var previousPoint = null;
-                $(".chart").bind("plothover", function (event, pos, item) {
+                $("#chart_grow" + idchart).off("plothover.weather").on("plothover.weather", function (event, pos, item) {
                     $("#x").text(pos.x.toFixed(2));
                     $("#y").text(pos.y.toFixed(2));
 
